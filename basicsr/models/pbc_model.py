@@ -36,7 +36,7 @@ import sys
 
 sys.path.append("..")  # Adds higher directory to python modules path.
 
-from utils.logging import logger
+from utils.logging import Profiler, logger
 
 
 @MODEL_REGISTRY.register()
@@ -336,7 +336,8 @@ class ModelInference:
                 json_save_path = osp.join(save_folder, name_str + ".json")
                 # compiled_model = torch.compile(self.model)
                 # match_tensor = self.model(self.dis_data_to_cuda(test_data))
-                match_tensor = self.model(test_data)
+                with Profiler("Coloring Model Time", limit=5):
+                    match_tensor = self.model(test_data)
                 match_scores = match_tensor["match_scores"].cpu().numpy()
 
                 color_next_frame = {}

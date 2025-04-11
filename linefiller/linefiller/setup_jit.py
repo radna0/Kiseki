@@ -19,15 +19,16 @@ opencv_libs = (
 setup(
     ext_modules=[
         Extension(
-            "trappedballcpp_jit",
-            ["trappedballcpp_jit.cpp"],
+            "trappedballcpp",
+            ["trappedballcpp.cpp"],
             include_dirs=[
                 pybind11.get_include(),
                 pybind11.get_include(user=True),
                 "/usr/include/opencv4",
             ],
             language="c++",
-            extra_compile_args=["-std=c++17"] + opencv_cflags,
+            extra_compile_args=["-std=c++17", "-O3", "-march=native", "-flto"]
+            + opencv_cflags,
             extra_link_args=opencv_libs,
         ),
     ],

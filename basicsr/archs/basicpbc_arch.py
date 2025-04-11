@@ -686,10 +686,6 @@ class BasicPBC(nn.Module):
 
     def forward(self, data):
         """Run SuperGlue on a pair of keypoints and descriptors"""
-        import cProfile, pstats
-
-        profiler = cProfile.Profile()
-        profiler.enable()
 
         kpts, kpts_ref = (data["keypoints"].float(), data["keypoints_ref"].float())
 
@@ -811,9 +807,6 @@ class BasicPBC(nn.Module):
         indices0 = torch.where(valid0, indices0, indices0.new_tensor(-1))
         indices1 = torch.where(valid1, indices1, indices1.new_tensor(-1))
 
-        profiler.disable()
-        stats = pstats.Stats(profiler).sort_stats("cumtime")
-        stats.print_stats(5)
 
         if all_matches is None:
             return {

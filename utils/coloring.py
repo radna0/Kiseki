@@ -7,7 +7,7 @@ from utils.logging import Profiler
 
 
 def load_params(model_path):
-    full_model = torch.load(model_path, map_location="cpu", weights_only=True)
+    full_model = torch.load(model_path, map_location="cpu", weights_only=False)
     if "params_ema" in full_model:
         return full_model["params_ema"]
     elif "params" in full_model:

@@ -5,22 +5,27 @@ from natsort import natsorted
 import os.path as osp
 from glob import glob
 import shutil
+import sys
+
+sys.path.append("..")  # Adds higher directory to python modules path.
+
+from utils.logging import logger
 
 
-def create_pngs(path, dups_sorted, tmp_file_names):
+def create_pngs(path, dups_sorted, tmp_file_names, final_path):
     # path: dataset/test/manu_test/, path_main_dir: manu_test
     path_main_dir = os.path.basename(os.path.normpath(path))
     line_raw = osp.join(path, "line_raw")
     raw_list = natsorted(glob(osp.join(line_raw, "*.png")))
     raw_list_names = [osp.split(x)[-1] for x in raw_list]
-    print(f"Sorted Line Raw List: {raw_list_names}\n")
-    final_dir = os.path.join(path, "final")
+    logger.info(f"Sorted Line Raw List: {raw_list_names}\n")
+    final_dir = os.path.join(path, final_path)
     os.makedirs(final_dir, exist_ok=True)
 
     output_idx = 0  # to name the new files sequentially
 
     for file_name, num_dups in zip(tmp_file_names, dups_sorted):
-        print(
+        logger.info(
             f"Processing {file_name} with {num_dups} duplicates. path: {path}, path_main_dir: {path_main_dir}, file_name: {file_name}"
         )
         src_path = os.path.join(path, path_main_dir, file_name)
@@ -69,17 +74,27 @@ def create_gif(folder_path, output_path="output.gif", duration=None):
             duration=duration,
             loop=0,
         )
-        print(f"Successfully created GIF at {output_path} with {len(frames)} frames")
-        print(f"Duration per frame: {duration}ms")
+        logger.info(
+            f"Successfully created GIF at {output_path} with {len(frames)} frames"
+        )
+        logger.info(f"Duration per frame: {duration}ms")
     else:
-        print("No valid PNG files found to create GIF")
+        logger.info("No valid PNG files found to create GIF")
 
 
 def main(path, dups_sorted, tmp_file_names):
-    return
-    create_pngs(path, dups_sorted, tmp_file_names)
+    path_main_dir = os.path.basename(os.path.normpath(path))
+    line_raw_path = osp.join(path, "line_raw")
+    line_file = os.path.join(path, "line_raw.gif")
 
-    create_gif(folder_path=path, output_path=args.output, duration=200)
+    res_raw_path = osp.join(path, "final")
+    res_file = os.path.join(path, f"{path_main_dir}.gif")
+
+    create_pngs(path, dups_sorted, tmp_file_names, "final")
+
+    create_gif(folder_path=line_raw_path, output_path=line_file, duration=200)
+
+    create_gif(folder_path=res_raw_path, output_path=res_file, duration=200)
 
 
 if __name__ == "__main__":

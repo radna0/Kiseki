@@ -150,11 +150,6 @@ def trappedball_fill(img_path, save_path, radius=4, contour=False):
     """trappedball_fill_opti(img_path, save_path, radius, contour)
 
     return"""
-    import cProfile, pstats
-
-    profiler = cProfile.Profile()
-    profiler.enable()
-
     im = read_line_2_np(img_path, channel=3)
     im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
     ret, binary = cv2.threshold(im, 220, 255, cv2.THRESH_BINARY)
@@ -178,7 +173,3 @@ def trappedball_fill(img_path, save_path, radius=4, contour=False):
     fillmap = merge_fill(fillmap)
 
     cv2.imwrite(save_path, show_fill_map(thinning(fillmap) if not contour else fillmap))
-
-    profiler.disable()
-    stats = pstats.Stats(profiler).sort_stats("cumtime")
-    stats.print_stats(20)

@@ -12,8 +12,6 @@ import sys
 sys.path.append("linefiller/linefiller")
 import trappedballcpp
 
-# import trappedballcpp_jit as trappedballcpp
-
 
 def flood_fill_multi(image: np.ndarray, max_iter: int = 20000):
     """Perform multi flood fill operations until all valid areas are filled.

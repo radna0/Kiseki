@@ -1,0 +1,1 @@
+TCMALLOC_LARGE_ALLOC_REPORT_THRESHOLD=99999999999 python3.10 main.py --path dataset/test/manu --radius 4

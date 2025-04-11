@@ -203,6 +203,8 @@ def read_line_2_np(img_path, channel=4):
 
 
 def trappedball_fill(img_path, save_path, radius=4, contour=False):
+    # trappedball_fill_numba(img_path, save_path, radius, contour)
+    # return
 
     im = read_line_2_np(img_path, channel=3)
     im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
@@ -251,9 +253,10 @@ def process_line(
     seg_color_path = osp.join(seg_color_folder, name + ".png")
 
     # profile trappedball_fill
-    with Profiler("TrappedBall Filling Time", limit=0):
+    with Profiler("TrappedBall Filling Time", limit=20):
         trappedball_fill(line_path, seg_color_path, radius, contour=True)
 
+    raise Exception("TrappedBall Filling Time")
     # return
 
     with Profiler("Extracting Segments Time", limit=0):

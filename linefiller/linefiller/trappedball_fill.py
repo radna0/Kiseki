@@ -5,9 +5,6 @@ from numba import njit, prange
 from linefiller.log.logger import logger
 import sys
 
-sys.path.append("linefiller/linefiller")
-import trappedballcpp
-
 
 def get_ball_structuring_element(radius: int):
     """Get a ball shape structuring element with specific radius for morphology operation.
