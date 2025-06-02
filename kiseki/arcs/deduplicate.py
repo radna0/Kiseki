@@ -18,6 +18,9 @@ cv2.setUseOptimized(True)
 cv2.ocl.setUseOpenCL(True)
 
 
+RAFT_RESOLUTIONS = [(1280, 720), (1024, 1024), (720, 1280)]
+
+
 def get_image_signature(image_path):
     img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
     if img is None:
@@ -98,7 +101,8 @@ def analyze_sequence(folder, ssim_threshold=0.995):
     return natsorted(key_frames, key=lambda x: x["path"])
 
 
-def main(path):
+def main(args):
+    path = args.path
     # Locate raw folders
     raw_ref = osp.join(path, "ref_raw")
     raw_line = osp.join(path, "line_raw")
@@ -160,6 +164,13 @@ def main(path):
     logger.info(f"Raw Line Map: {raw_line_map}\n")
     logger.info(f"key_frames: {dups_sorted}\n")
     logger.info(f"tmp_file_names: {tmp_file_names}\n")
+
+    sample_img = cv2.imread(osp.join(line_dir, tmp_file_names[0]), cv2.IMREAD_UNCHANGED)
+
+    orig_h, orig_w = sample_img.shape[:2]
+
+    orig_ratio = orig_w / orig_h
+    args.raft_res = min(RAFT_RESOLUTIONS, key=lambda r: abs((r[0] / r[1]) - orig_ratio))
 
     return raw_ref_map, dups_sorted, tmp_file_names, raw_line_map
 

@@ -31,7 +31,7 @@ def main(args):
         # wo_parsing=True,
         # use_raft=True,
         encoder_resolution=(640, 640),
-        raft_resolution=(args.raft_res, args.raft_res),
+        raft_resolution=(1280, 720),
         clip_resolution=(640, 640),
     )
     model.load_state_dict(load_params(ckpt_path))

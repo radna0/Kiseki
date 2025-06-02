@@ -42,21 +42,16 @@ def parse_args():
         action="store_true",
         help="used for keeping the original line in the final output.",
     )
-    parser.add_argument(
-        "--raft_res",
-        type=int,
-        default=640,
-        help="change the resolution for the optical flow estimation. If the performance is bad on your case, you can change this to 640 to have a try.",
-    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-
     # Step 1.A: Deduplicate frames
     with Profiler("Dedup Time", limit=0):
-        raw_ref_map, dups_sorted, tmp_file_names, raw_line_map = dedup.main(args.path)
+        _, dups_sorted, tmp_file_names, __ = dedup.main(args)
+
+    print(args)
 
     """ # Step 1.B: Process images for transparency if needed
     with Profiler("Transparency Processing Time", limit=5):
