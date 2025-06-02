@@ -45,8 +45,8 @@ def parse_args():
     parser.add_argument(
         "--raft_res",
         type=int,
-        default=1280,
-        help="change the resolution for the optical flow estimation. If the performance is bad on your case, you can change this to 1024 to have a try.",
+        default=640,
+        help="change the resolution for the optical flow estimation. If the performance is bad on your case, you can change this to 640 to have a try.",
     )
     return parser.parse_args()
 

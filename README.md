@@ -63,7 +63,7 @@ Now place your 'lines' and 'references' images in `datatest/test/{name}`, corres
 ## Usage
 
 ```
-sh scripts/inference.sh
+sh scripts/inference.sh datatest/test/{name}
 ```
 
 ## Contact

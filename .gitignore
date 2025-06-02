@@ -2,7 +2,10 @@
 
 setup.sh
 
+test/*
+flow_comparison_frames/*
 dataset/train/*
+dataset/test/*
 ckpt/*
 
 
