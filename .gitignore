@@ -2,6 +2,8 @@
 
 setup.sh
 
+
+raft/ckpt/*
 test/*
 flow_comparison_frames/*
 dataset/train/*

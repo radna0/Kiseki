@@ -1,9 +1,7 @@
 import torch
 import torch.utils.data as data
-from basicsr.archs.basicpbc_arch import BasicPBC
-from basicsr.archs.basicpbc_ref_arch import BasicPBC_ref
+from basicsr.archs.kiseki_arch import Kiseki
 from basicsr.models.pbc_model import ModelInference
-from basicsr.models.pbc_ref_model import ModelInference as ModelInference_ref
 from basicsr.data.pbc_inference_dataset import PaintBucketInferenceDataset
 from kiseki.logging import Profiler
 
@@ -21,17 +19,14 @@ def load_params(model_path):
 def main(args):
 
     ckpt_path = "ckpt/basicpbc.pth"
-    model = BasicPBC(
+    model = Kiseki(
         ch_in=6,
         descriptor_dim=128,
         keypoint_encoder=[32, 64, 128],
         GNN_layer_num=9,
         use_clip=True,
-        # wo_text=True,
-        # wo_parsing=True,
-        # use_raft=True,
         encoder_resolution=(640, 640),
-        raft_resolution=(1280, 720),
+        raft_resolution=args.raft_res,
         clip_resolution=(640, 640),
     )
     model.load_state_dict(load_params(ckpt_path))
