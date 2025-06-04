@@ -9,6 +9,7 @@ import kiseki.arcs.sequence as seq
 from kiseki.logging import Profiler
 
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(

@@ -235,12 +235,14 @@ class ModelInference:
         if hasattr(self, "torch_rng_state0"):
             torch.set_rng_state(self.torch_rng_state0)
 
-    def dis_data_to_cuda(self, data):
+    def _move_to(self, data, device="xla"):
         for key in data.keys():
             if isinstance(data[key], torch.Tensor):
-                import torch_xla as xla
-
-                data[key] = data[key].to(xla.device())
+                if device == "cuda":
+                    data[key] = data[key].to(device)
+                else:
+                    import torch_xla as xla
+                    data[key] = data[key].to(xla.device())
         return data
 
     def preprocess_character_folder(self, samples, save_path):
@@ -284,7 +286,7 @@ class ModelInference:
             json_path_ref = osp.join(res_folder, ref_name + ".json")
             color_dict = load_json(json_path_ref)
             json_save_path = osp.join(res_folder, line_name + ".json")
-            res = self.model(test_data)
+            res = self.model(self._move_to(test_data))
             match_scores = res["match_scores"].cpu().numpy()
 
             color_next_frame = {}
