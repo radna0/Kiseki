@@ -21,7 +21,7 @@ def load_params(model_path):
         return full_model
 
 
-def init(args):
+def main(args):
 
     ckpt_path = "ckpt/basicpbc.pth"
     model = Kiseki(
@@ -41,5 +41,7 @@ def init(args):
         dataset = KisekiInMemoryInferenceDataset(opt)
 
     model_inference = ModelInference(model, dataset.samples)
-
-    return model_inference
+    if args.mode == "reference":
+        model_inference.inference_multi_gt_sequential(args.path)
+    else:
+        model_inference.inference_multi_gt(args.path)

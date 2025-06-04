@@ -6,36 +6,7 @@ import kiseki.arcs.coloring as col
 import kiseki.arcs.sequence as seq
 
 # import kiseki.arcs.lineart as lineart
-from kiseki.logging import Profiler, setup_config, logger
-import requests
-
-from flask import Flask, request, jsonify
-import sys
-import threading
-
-sys.stdout.reconfigure(encoding="utf-8")
-
-app = Flask(__name__)
-MODEL_INFERENCE = None
-
-
-# Run the Flask app in a separate thread
-def run_flask(args):
-    global MODEL_INFERENCE
-    setup_config()
-
-    MODEL_INFERENCE = col.init(args)
-    logger.info(f"MODEL_INFERENCE: {MODEL_INFERENCE}")
-
-    app.run(port=8000, use_reloader=False)
-
-
-@app.route("/inference", methods=["GET"])
-def inference():
-    global MODEL_INFERENCE
-    path = request.args.get("path")
-    MODEL_INFERENCE.inference_multi_gt_sequential(path)
-    return jsonify({"message": "Done!"}), 200
+from kiseki.logging import Profiler
 
 
 def parse_args():
@@ -69,8 +40,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def main(args):
-    global MODEL_INFERENCE
+def main():
+    args = parse_args()
     # Step 1.A: Deduplicate frames
     with Profiler("Dedup Time", limit=0):
         _, dups_sorted, tmp_file_names, __ = dedup.main(args)
@@ -94,13 +65,7 @@ def main(args):
 
     # Step 3: Coloring
     with Profiler("Coloring Time", limit=20):
-        while True:
-            if MODEL_INFERENCE is None:
-                continue
-            logger.info(f"MODEL_INFERENCE: {MODEL_INFERENCE}")
-            res = requests.get(f"http://localhost:8000/inference?path={args.path}")
-            logger.info(f"res: {res}")
-            break
+        col.main(args)
 
     # Step 4: Sequence
     with Profiler("Sequence Time", limit=0):
@@ -109,8 +74,4 @@ def main(args):
 
 if __name__ == "__main__":
     with Profiler("Main Time", limit=0):
-        args = parse_args()
-
-        flask_thread = threading.Thread(target=run_flask, args=(args,))
-        flask_thread.start()
-        main(args)
+        main()
