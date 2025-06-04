@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 import kiseki.arcs.deduplicate as dedup
 import kiseki.arcs.segmentation as seg
@@ -10,6 +11,7 @@ from kiseki.logging import Profiler, setup_config, logger
 import requests
 
 from flask import Flask, request, jsonify
+from werkzeug.serving import make_server
 import sys
 import threading
 
@@ -19,21 +21,38 @@ app = Flask(__name__)
 MODEL_INFERENCE = None
 
 
-# Run the Flask app in a separate thread
-def run_flask(args):
-    global MODEL_INFERENCE
-    setup_config()
+# This Event will let the main thread know that Flask is now serving.
+server_ready = threading.Event()
 
-    MODEL_INFERENCE = col.init(args)
-    logger.info(f"MODEL_INFERENCE: {MODEL_INFERENCE}")
 
-    app.run(port=8000, use_reloader=False)
+class ServerThread(threading.Thread):
+    def __init__(self, args):
+        super().__init__(daemon=True)
+        self.args = args
+        self.server = None
+
+    def run(self):
+        global MODEL_INFERENCE
+        setup_config()
+        MODEL_INFERENCE = col.init(self.args)
+
+        # Create a Werkzeug “server” object, tell it to listen on 127.0.0.1:8000.
+        self.server = make_server("127.0.0.1", 8000, app, processes=os.cpu_count())
+        # Once we’ve bound the socket, set the event so main() can proceed.
+        server_ready.set()
+
+        # Now run the server forever (or until killed).
+        self.server.serve_forever()
+
+    def shutdown(self):
+        if self.server:
+            self.server.shutdown()
 
 
 @app.route("/inference", methods=["GET"])
 def inference():
     global MODEL_INFERENCE
-    path = request.args.get("path")
+    path = request.args["path"]
     MODEL_INFERENCE.inference_multi_gt_sequential(path)
     return jsonify({"message": "Done!"}), 200
 
@@ -95,10 +114,10 @@ def main(args):
     # Step 3: Coloring
     with Profiler("Coloring Time", limit=20):
         while True:
-            if MODEL_INFERENCE is None:
+            if not server_ready.is_set():
                 continue
-            logger.info(f"MODEL_INFERENCE: {MODEL_INFERENCE}")
-            res = requests.get(f"http://localhost:8000/inference?path={args.path}")
+            logger.info(f"Flask server started!")
+            res = requests.get(f"http://127.0.0.1:8000/inference?path={args.path}")
             logger.info(f"res: {res}")
             break
 
@@ -110,7 +129,6 @@ def main(args):
 if __name__ == "__main__":
     with Profiler("Main Time", limit=0):
         args = parse_args()
-
-        flask_thread = threading.Thread(target=run_flask, args=(args,))
+        flask_thread = ServerThread(args)
         flask_thread.start()
         main(args)
