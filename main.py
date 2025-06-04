@@ -37,11 +37,6 @@ def parse_args():
         action="store_true",
         help="used for multi-clip inference. Set `path` to a folder where each sub-folder is a single clip.",
     )
-    parser.add_argument(
-        "--keep_line",
-        action="store_true",
-        help="used for keeping the original line in the final output.",
-    )
     return parser.parse_args()
 
 

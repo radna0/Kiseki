@@ -1,8 +1,7 @@
 import torch
 import torch.utils.data as data
 from basicsr.archs.kiseki_arch import Kiseki
-from basicsr.data.kiseki_inference_dataset import KisekiInMemoryInferenceDataset
-from basicsr.models.kiseki_model import ModelInference
+from basicsr.models.pbc_model import ModelInference
 from basicsr.data.pbc_inference_dataset import PaintBucketInferenceDataset
 from kiseki.logging import Profiler
 
@@ -34,10 +33,14 @@ def main(args):
     model.eval()
 
     opt = {"root": args.path, "multi_clip": args.multi_clip, "mode": args.mode}
-    dataset = KisekiInMemoryInferenceDataset(opt)
+    dataset = PaintBucketInferenceDataset(opt)
+    dataloader = data.DataLoader(dataset, batch_size=1)
 
-    model_inference = ModelInference(model, dataset.samples)
-    if args.mode == "reference":
-        model_inference.inference_multi_gt_sequential(args.path)
-    else:
-        model_inference.inference_multi_gt(args.path)
+    model_inference = ModelInference(model, dataloader)
+    with Profiler("Coloring Inference Time", limit=5):
+        if args.mode == "end2end":
+            model_inference.inference()
+        elif args.mode == "reference":
+            model_inference.inference_multi_gt_sequential(args.path, args.keep_line)
+        else:
+            model_inference.inference_multi_gt(args.path, args.keep_line)

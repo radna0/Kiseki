@@ -11,6 +11,11 @@ from torch_scatter import scatter as super_pixel_pooling
 from basicsr.utils.registry import ARCH_REGISTRY
 from raft.raft import RAFT
 
+import sys
+
+sys.path.append("...")  # Adds higher directory to python modules path.
+from kiseki.logging import logger, Profiler
+
 
 def flow_warp(
     x, flow, interpolation="bilinear", padding_mode="zeros", align_corners=True
@@ -624,166 +629,177 @@ class Kiseki(nn.Module):
 
     def forward(self, data):
         """Run SuperGlue on a pair of keypoints and descriptors"""
+        """ logger.info(
+            f'RAFT forward:{("keypoints", data["keypoints"].shape,"keypoints_ref", data["keypoints_ref"].shape,"centerpoints", data["centerpoints"],"centerpoints_ref", data["centerpoints_ref"], "numpixels", data["numpixels"],"numpixels_ref", data["numpixels_ref"],"line", data["line"].shape,"line_ref", data["line_ref"].shape,"segment", data["segment"].shape,"segment_ref", data["segment_ref"].shape,"recolorized_img", data["recolorized_img"].shape,)}'
+        ) """
+        with Profiler("Coloring Frame Time", limit=20):
 
-        kpts, kpts_ref = (data["keypoints"].float(), data["keypoints_ref"].float())
+            kpts, kpts_ref = (data["keypoints"].float(), data["keypoints_ref"].float())
 
-        if kpts.shape[1] < 2 or kpts_ref.shape[1] < 2:  # no keypoints
-            shape = kpts.shape[:-1]
-            print(f"No keypoints in {data['file_name'][0]}")
-            return {
-                "matches0": kpts.new_full(shape, -1, dtype=torch.int)[0],
-                "matching_scores0": kpts.new_zeros(shape)[0],
-                "skip_train": True,
-            }
+            if kpts.shape[1] < 2 or kpts_ref.shape[1] < 2:  # no keypoints
+                shape = kpts.shape[:-1]
+                logger.info(f"No keypoints in {data['file_name'][0]}")
+                return {
+                    "matches0": kpts.new_full(shape, -1, dtype=torch.int)[0],
+                    "matching_scores0": kpts.new_zeros(shape)[0],
+                    "skip_train": True,
+                }
 
-        line, line_ref, color_ref = (
-            data["line"],
-            data["line_ref"],
-            data["recolorized_img"],
-        )
-        h, w = line.shape[-2:]
-        if self.config.raft_resolution:
-            line = F.interpolate(
-                line, self.config.raft_resolution, mode="bilinear", align_corners=False
+            line, line_ref, color_ref = (
+                data["line"],
+                data["line_ref"],
+                data["recolorized_img"],
             )
-            line_ref = F.interpolate(
-                line_ref,
-                self.config.raft_resolution,
-                mode="bilinear",
-                align_corners=False,
+            h, w = line.shape[-2:]
+            if self.config.raft_resolution:
+                line = F.interpolate(
+                    line,
+                    self.config.raft_resolution,
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                line_ref = F.interpolate(
+                    line_ref,
+                    self.config.raft_resolution,
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                color_ref = F.interpolate(
+                    color_ref,
+                    self.config.raft_resolution,
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            self.raft.eval()
+            _, flow_up = self.raft(line, line_ref, iters=20, test_mode=True)
+            warpped_img = flow_warp(
+                color_ref, flow_up.permute(0, 2, 3, 1).detach(), "nearest"
             )
-            color_ref = F.interpolate(
-                color_ref,
-                self.config.raft_resolution,
-                mode="bilinear",
-                align_corners=False,
-            )
-        self.raft.eval()
-        _, flow_up = self.raft(line, line_ref, iters=20, test_mode=True)
-        warpped_img = flow_warp(
-            color_ref, flow_up.permute(0, 2, 3, 1).detach(), "nearest"
-        )
-        warpped_img = F.interpolate(
-            warpped_img, (h, w), mode="bilinear", align_corners=False
-        )
-
-        if self.config.ch_in == 6:
-            warpped_target_img = torch.cat((warpped_img, data["line"]), dim=1)
-            warpped_ref_img = torch.cat(
-                (data["recolorized_img"], data["line_ref"]), dim=1
-            )
-        else:
-            assert False, "Input channel only supports 6 with 3 as line and 3 as color."
-        if self.config.use_clip:
-            desc = self.segment_desc(
-                warpped_target_img, data["segment"], data["line"], use_offset=True
-            )
-            desc_ref = self.segment_desc(
-                warpped_ref_img, data["segment_ref"], data["line_ref"]
-            )
-        else:
-            desc = self.segment_desc(
-                warpped_target_img, data["segment"], use_offset=True
-            )
-            desc_ref = self.segment_desc(warpped_ref_img, data["segment_ref"])
-        desc = desc[..., 1:]
-        desc_ref = desc_ref[..., 1:]
-
-        all_matches = (
-            data["all_matches"] if "all_matches" in data else None
-        )  # shape = (1, K1)
-
-        # positional embedding
-        # Keypoint normalization.
-        kpts = normalize_keypoints(kpts, data["line"].shape)
-        kpts_ref = normalize_keypoints(kpts_ref, data["line_ref"].shape)
-
-        # Keypoint MLP encoder.
-
-        pos = self.kenc(kpts)
-        pos_ref = self.kenc(kpts_ref)
-
-        desc = desc + pos
-        desc_ref = desc_ref + pos_ref
-
-        # Multi-layer Transformer network.
-        desc, desc_ref = self.gnn(desc, desc_ref)
-
-        # Final MLP projection.
-        mdesc, mdesc_ref = self.final_proj(desc), self.final_proj(desc_ref)
-
-        # Compute matching descriptor distance.
-        scores = torch.einsum("bdn,bdm->bnm", mdesc, mdesc_ref)
-
-        # b k1 k2
-        scores = scores / (self.config.descriptor_dim) ** 0.5
-
-        # Run the optimal transport.
-        b, m, n = scores.size()
-        scores = transport(scores, self.bin_score)
-
-        all_matches_origin = all_matches.clone() if all_matches is not None else None
-
-        if all_matches is not None:
-            all_matches[all_matches == -1] = n
-            loss = nn.functional.cross_entropy(
-                scores[:, :-1, :].view(-1, n + 1),
-                all_matches.long().view(-1),
-                reduction="mean",
-            )
-            loss = loss.mean()
-
-        scores = nn.functional.softmax(scores, dim=2)
-
-        max0, max1 = scores[:, :-1, :].max(2), scores[:, :, :-1].max(1)
-        indices0, indices1 = max0.indices, max1.indices
-        mscores0 = max0.values
-
-        valid0 = indices0 < n
-        valid1 = indices1 < m
-        indices0 = torch.where(valid0, indices0, indices0.new_tensor(-1))
-        indices1 = torch.where(valid1, indices1, indices1.new_tensor(-1))
-
-        if all_matches is None:
-            return {
-                "match_scores": scores[:, :-1, :][0],
-                "matches0": indices0[0],  # use -1 for invalid match
-                "matching_scores0": mscores0[0],
-                "loss": -1,
-                "skip_train": True,
-                "accuracy": -1,
-                "area_accuracy": -1,
-                "valid_accuracy": -1,
-                "invalid_accuracy": -1,
-            }
-        else:
-            is_correct = all_matches_origin[0] == indices0[0]
-            accuracy = (is_correct.sum() / len(all_matches_origin[0])).item()
-            correct_indices = torch.arange(
-                len(all_matches_origin[0]), device=is_correct.device
-            )[is_correct]
-            area_accuracy = (
-                torch.tensor(
-                    [(data["segment"] == idx + 1).sum() for idx in correct_indices]
-                ).sum()
-                / data["numpixels"].sum()
-            ).item()
-            is_valid = all_matches_origin[0] != -1
-            valid_accuracy = ((is_correct & is_valid).sum() / is_valid.sum()).item()
-            invalid_accuracy = (
-                ((is_correct & ~is_valid).sum() / (~is_valid).sum()).item()
-                if (~is_valid).sum() > 0
-                else None
+            warpped_img = F.interpolate(
+                warpped_img, (h, w), mode="bilinear", align_corners=False
             )
 
-            return {
-                "match_scores": scores[:, :-1, :][0],
-                "matches0": indices0[0],  # use -1 for invalid match
-                "matching_scores0": mscores0[0],
-                "loss": loss,
-                "skip_train": False,
-                "accuracy": accuracy,
-                "area_accuracy": area_accuracy,
-                "valid_accuracy": valid_accuracy,
-                "invalid_accuracy": invalid_accuracy,
-            }
+            if self.config.ch_in == 6:
+                warpped_target_img = torch.cat((warpped_img, data["line"]), dim=1)
+                warpped_ref_img = torch.cat(
+                    (data["recolorized_img"], data["line_ref"]), dim=1
+                )
+            else:
+                assert (
+                    False
+                ), "Input channel only supports 6 with 3 as line and 3 as color."
+            if self.config.use_clip:
+                desc = self.segment_desc(
+                    warpped_target_img, data["segment"], data["line"], use_offset=True
+                )
+                desc_ref = self.segment_desc(
+                    warpped_ref_img, data["segment_ref"], data["line_ref"]
+                )
+            else:
+                desc = self.segment_desc(
+                    warpped_target_img, data["segment"], use_offset=True
+                )
+                desc_ref = self.segment_desc(warpped_ref_img, data["segment_ref"])
+            desc = desc[..., 1:]
+            desc_ref = desc_ref[..., 1:]
+
+            all_matches = (
+                data["all_matches"] if "all_matches" in data else None
+            )  # shape = (1, K1)
+
+            # positional embedding
+            # Keypoint normalization.
+            kpts = normalize_keypoints(kpts, data["line"].shape)
+            kpts_ref = normalize_keypoints(kpts_ref, data["line_ref"].shape)
+
+            # Keypoint MLP encoder.
+
+            pos = self.kenc(kpts)
+            pos_ref = self.kenc(kpts_ref)
+
+            desc = desc + pos
+            desc_ref = desc_ref + pos_ref
+
+            # Multi-layer Transformer network.
+            desc, desc_ref = self.gnn(desc, desc_ref)
+
+            # Final MLP projection.
+            mdesc, mdesc_ref = self.final_proj(desc), self.final_proj(desc_ref)
+
+            # Compute matching descriptor distance.
+            scores = torch.einsum("bdn,bdm->bnm", mdesc, mdesc_ref)
+
+            # b k1 k2
+            scores = scores / (self.config.descriptor_dim) ** 0.5
+
+            # Run the optimal transport.
+            b, m, n = scores.size()
+            scores = transport(scores, self.bin_score)
+
+            all_matches_origin = (
+                all_matches.clone() if all_matches is not None else None
+            )
+
+            if all_matches is not None:
+                all_matches[all_matches == -1] = n
+                loss = nn.functional.cross_entropy(
+                    scores[:, :-1, :].view(-1, n + 1),
+                    all_matches.long().view(-1),
+                    reduction="mean",
+                )
+                loss = loss.mean()
+
+            scores = nn.functional.softmax(scores, dim=2)
+
+            max0, max1 = scores[:, :-1, :].max(2), scores[:, :, :-1].max(1)
+            indices0, indices1 = max0.indices, max1.indices
+            mscores0 = max0.values
+
+            valid0 = indices0 < n
+            valid1 = indices1 < m
+            indices0 = torch.where(valid0, indices0, indices0.new_tensor(-1))
+            indices1 = torch.where(valid1, indices1, indices1.new_tensor(-1))
+
+            if all_matches is None:
+                return {
+                    "match_scores": scores[:, :-1, :][0],
+                    "matches0": indices0[0],  # use -1 for invalid match
+                    "matching_scores0": mscores0[0],
+                    "loss": -1,
+                    "skip_train": True,
+                    "accuracy": -1,
+                    "area_accuracy": -1,
+                    "valid_accuracy": -1,
+                    "invalid_accuracy": -1,
+                }
+            else:
+                is_correct = all_matches_origin[0] == indices0[0]
+                accuracy = (is_correct.sum() / len(all_matches_origin[0])).item()
+                correct_indices = torch.arange(
+                    len(all_matches_origin[0]), device=is_correct.device
+                )[is_correct]
+                area_accuracy = (
+                    torch.tensor(
+                        [(data["segment"] == idx + 1).sum() for idx in correct_indices]
+                    ).sum()
+                    / data["numpixels"].sum()
+                ).item()
+                is_valid = all_matches_origin[0] != -1
+                valid_accuracy = ((is_correct & is_valid).sum() / is_valid.sum()).item()
+                invalid_accuracy = (
+                    ((is_correct & ~is_valid).sum() / (~is_valid).sum()).item()
+                    if (~is_valid).sum() > 0
+                    else None
+                )
+
+                return {
+                    "match_scores": scores[:, :-1, :][0],
+                    "matches0": indices0[0],  # use -1 for invalid match
+                    "matching_scores0": mscores0[0],
+                    "loss": loss,
+                    "skip_train": False,
+                    "accuracy": accuracy,
+                    "area_accuracy": area_accuracy,
+                    "valid_accuracy": valid_accuracy,
+                    "invalid_accuracy": invalid_accuracy,
+                }

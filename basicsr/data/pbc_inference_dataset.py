@@ -136,6 +136,7 @@ class AnimeInferenceDataset:
             recolorize_seg(seg_ref) if gt_ref is None else recolorize_gt(gt_ref)
         )
 
+
         return {
             "file_name": file_name,
             "file_name_ref": file_name_ref,
