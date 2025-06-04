@@ -1,4 +1,5 @@
 import argparse
+import os
 import open_clip
 import torch
 import torch.nn.functional as F
@@ -570,7 +571,6 @@ class Kiseki(nn.Module):
         GNN_layer_num=9,
         use_clip=False,
         encoder_resolution=None,
-        raft_resolution=None,
         clip_resolution=(320, 320),
     ):
         super().__init__()
@@ -583,7 +583,6 @@ class Kiseki(nn.Module):
         config.GNN_layers = ["self", "cross"] * GNN_layer_num
         config.use_clip = use_clip
         config.encoder_resolution = encoder_resolution
-        config.raft_resolution = raft_resolution
         config.clip_resolution = clip_resolution
 
         self.config = config
@@ -632,8 +631,8 @@ class Kiseki(nn.Module):
         """ logger.info(
             f'RAFT forward:{("keypoints", data["keypoints"].shape,"keypoints_ref", data["keypoints_ref"].shape,"centerpoints", data["centerpoints"],"centerpoints_ref", data["centerpoints_ref"], "numpixels", data["numpixels"],"numpixels_ref", data["numpixels_ref"],"line", data["line"].shape,"line_ref", data["line_ref"].shape,"segment", data["segment"].shape,"segment_ref", data["segment_ref"].shape,"recolorized_img", data["recolorized_img"].shape,)}'
         ) """
-        with Profiler("Coloring Frame Time", limit=20):
-
+        with Profiler("Coloring Frame Time", limit=0):
+            logger.info(f"[{os.getpid()}] Running RAFT")
             kpts, kpts_ref = (data["keypoints"].float(), data["keypoints_ref"].float())
 
             if kpts.shape[1] < 2 or kpts_ref.shape[1] < 2:  # no keypoints
@@ -645,33 +644,38 @@ class Kiseki(nn.Module):
                     "skip_train": True,
                 }
 
+            logger.info(f"[{os.getpid()}] Running RAFT check 2")
+
             line, line_ref, color_ref = (
                 data["line"],
                 data["line_ref"],
                 data["recolorized_img"],
             )
             h, w = line.shape[-2:]
-            if self.config.raft_resolution:
+            if data["raft_resolution"]:
                 line = F.interpolate(
                     line,
-                    self.config.raft_resolution,
+                    data["raft_resolution"],
                     mode="bilinear",
                     align_corners=False,
                 )
                 line_ref = F.interpolate(
                     line_ref,
-                    self.config.raft_resolution,
+                    data["raft_resolution"],
                     mode="bilinear",
                     align_corners=False,
                 )
                 color_ref = F.interpolate(
                     color_ref,
-                    self.config.raft_resolution,
+                    data["raft_resolution"],
                     mode="bilinear",
                     align_corners=False,
                 )
+            logger.info(f"[{os.getpid()}] Running RAFT check 3")
             self.raft.eval()
             _, flow_up = self.raft(line, line_ref, iters=20, test_mode=True)
+            logger.info(f"[{os.getpid()}] Running RAFT check 4")
+
             warpped_img = flow_warp(
                 color_ref, flow_up.permute(0, 2, 3, 1).detach(), "nearest"
             )

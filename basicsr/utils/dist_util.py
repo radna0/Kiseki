@@ -23,7 +23,9 @@ def _init_dist_pytorch(backend, **kwargs):
     rank = int(os.environ["RANK"])
     num_gpus = torch.cuda.device_count()
     torch.cuda.set_device(rank % num_gpus)
-    dist.init_process_group(backend=backend, timeout=timedelta(seconds=7200000), **kwargs)
+    dist.init_process_group(
+        backend=backend, timeout=timedelta(seconds=7200000), **kwargs
+    )
 
 
 def _init_dist_slurm(backend, port=None):
@@ -55,7 +57,9 @@ def _init_dist_slurm(backend, port=None):
     os.environ["WORLD_SIZE"] = str(ntasks)
     os.environ["LOCAL_RANK"] = str(proc_id % num_gpus)
     os.environ["RANK"] = str(proc_id)
-    dist.init_process_group(backend=backend, timeout=timedelta(seconds=7200000))  # was 1800000
+    dist.init_process_group(
+        backend=backend, timeout=timedelta(seconds=7200000)
+    )  # was 1800000
 
 
 def get_dist_info():

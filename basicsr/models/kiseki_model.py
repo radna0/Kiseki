@@ -27,16 +27,17 @@ from kiseki.paint import (
     merge_color_line,
 )
 
-import multiprocessing
-from functools import partial
 import concurrent.futures
-from multiprocessing import Lock
 
 import sys
 
 sys.path.append("..")  # Adds higher directory to python modules path.
-
 from kiseki.logging import Profiler, logger
+
+
+CPU_COUNT = os.cpu_count()
+MAX_WORKERS = 8
+THREADS_PER_WORKER = CPU_COUNT // MAX_WORKERS
 
 
 @MODEL_REGISTRY.register()
@@ -217,7 +218,6 @@ class ModelInference:
         self._set_seed(seed)
         self.samples = samples
         self.model = model
-        self.model.eval()  # Set the model to evaluation mode
 
     def _set_seed(self, seed):
         self.py_rng_state0 = random.getstate()
@@ -241,16 +241,13 @@ class ModelInference:
                 data[key] = data[key].to(xla.device())
         return data
 
-    def inference_single_frame(
-        self,
-        test_data,
-        save_path,
-        characters,
-    ):
-        with torch.no_grad():
+    def preprocess_character_folder(self, samples, save_path):
+        characters = set()
+
+        for test_data in samples:
             line_root, line_name = osp.split(test_data["file_name"])
-            logger.info(f"processing {test_data['file_name']}")
-            save_folder = osp.normpath(save_path)
+            logger.info(f"preprocessing {test_data['file_name']}")
+            save_folder, _ = osp.split(line_root)
             _, character_name = osp.split(save_folder)
             res_folder = osp.join(save_path, character_name)
 
@@ -266,15 +263,31 @@ class ModelInference:
                     shutil.copy(json_path, res_folder)
                     logger.info(f"{gt_path} is given.")
 
+    def inference_single_frame(self, test_data, save_path, threads_per_worker=None):
+        with torch.no_grad():
+            logger.info(f"threads_per_worker: {threads_per_worker}")
+            """ if threads_per_worker is not None:
+                # force PyTorch to use 1 thread for intra‐op (convolution, matrix multiply, etc.)
+                torch.set_num_threads(1)
+                # and if you’re using any multithreaded data‐loading, also limit inter_op
+                torch.set_num_interop_threads(1) """
+
+            line_root, line_name = osp.split(test_data["file_name"])
+            logger.info(f"processing {test_data['file_name']}")
+            save_folder, _ = osp.split(line_root)
+            _, character_name = osp.split(save_folder)
+            res_folder = osp.join(save_path, character_name)
+
             _, ref_name = osp.split(test_data["file_name_ref"])
             json_path_ref = osp.join(res_folder, ref_name + ".json")
             color_dict = load_json(json_path_ref)
             json_save_path = osp.join(res_folder, line_name + ".json")
             res = self.model(test_data)
             match_scores = res["match_scores"].cpu().numpy()
+
             color_next_frame = {}
             unmatch_color = [0] * len(list(color_dict.values())[0])
-            
+
             for i, scores in enumerate(match_scores):
                 color_lookup = np.array(
                     [
@@ -298,19 +311,29 @@ class ModelInference:
             dump_json(color_next_frame, json_save_path)
             label_path = osp.join(save_folder, "seg", line_name + ".png")
             img_save_path = json_save_path.replace(".json", ".png")
+
             colorize_label_image(label_path, json_save_path, img_save_path)
             logger.info(f"{img_save_path} created.\n")
 
     # processpool will be used to parallelize the inference process
     def inference_multi_gt_parallel(self, save_path):
-        characters = set()
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        self.preprocess_character_folder(self.samples, save_path)
+
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=min(MAX_WORKERS, len(self.samples))
+        ) as executor:
+            threads_per_worker = int(
+                CPU_COUNT // len(self.samples)
+                if len(self.samples) < MAX_WORKERS
+                else THREADS_PER_WORKER
+            )
+
             futures = [
                 executor.submit(
                     self.inference_single_frame,
                     test_data,
                     save_path,
-                    characters,
+                    threads_per_worker,
                 )
                 for test_data in self.samples
             ]
@@ -319,10 +342,9 @@ class ModelInference:
 
     # this function will be used to sequentialize the inference process
     def inference_multi_gt_sequential(self, save_path):
-        characters = set()
+        self.preprocess_character_folder(self.samples, save_path)
         for test_data in self.samples:
             self.inference_single_frame(
                 test_data,
                 save_path,
-                characters,
             )

@@ -1,13 +1,27 @@
+import os
 import time
 import cProfile, pstats, io
 from rich.logging import RichHandler
 from rich.console import Console
 from rich.table import Table
+
 import logging
 
-logging.basicConfig(
-    level=logging.INFO, format="%(message)s", datefmt="[%X]", handlers=[RichHandler()]
-)
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+
+
+def setup_config():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s]: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[RichHandler()],
+    )
+
+
+setup_config()
+# Log the log_postfix value
 logger = logging.getLogger("rich")
 console = Console()
 

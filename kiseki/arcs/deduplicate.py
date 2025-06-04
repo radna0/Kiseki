@@ -165,13 +165,6 @@ def main(args):
     logger.info(f"key_frames: {dups_sorted}\n")
     logger.info(f"tmp_file_names: {tmp_file_names}\n")
 
-    sample_img = cv2.imread(osp.join(line_dir, tmp_file_names[0]), cv2.IMREAD_UNCHANGED)
-
-    orig_h, orig_w = sample_img.shape[:2]
-
-    orig_ratio = orig_w / orig_h
-    args.raft_res = min(RAFT_RESOLUTIONS, key=lambda r: abs((r[0] / r[1]) - orig_ratio))
-
     return raw_ref_map, dups_sorted, tmp_file_names, raw_line_map
 
 

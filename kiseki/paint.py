@@ -11,6 +11,8 @@ from skimage.morphology import disk, binary_dilation
 from skimage.restoration import inpaint
 from tqdm import tqdm
 from numba import njit, prange
+from numba.typed import Dict
+from numba import types
 
 
 def load_json(file_path):

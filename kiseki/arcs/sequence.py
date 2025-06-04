@@ -11,14 +11,14 @@ import sys
 from ..logging import logger
 
 
-def create_pngs(path, dups_sorted, tmp_file_names, final_path):
+def create_pngs(path, dups_sorted, tmp_file_names, cur_folder, final_folder):
     # path: dataset/test/manu_test/, path_main_dir: manu_test
     path_main_dir = os.path.basename(os.path.normpath(path))
-    line_raw = osp.join(path, "line_raw")
+    line_raw = osp.join(path, cur_folder)
     raw_list = natsorted(glob(osp.join(line_raw, "*.png")))
     raw_list_names = [osp.split(x)[-1] for x in raw_list]
     logger.info(f"Sorted Line Raw List: {raw_list_names}\n")
-    final_dir = os.path.join(path, final_path)
+    final_dir = os.path.join(path, final_folder)
     os.makedirs(final_dir, exist_ok=True)
 
     output_idx = 0  # to name the new files sequentially
@@ -48,7 +48,7 @@ def create_gif(folder_path, output_path="output.gif", duration=None):
     frames = []
     for _, filename in sorted_files:
         img_path = os.path.join(folder_path, filename)
-        img = Image.open(img_path)
+        img = Image.open(img_path).convert("RGBA")
 
         # Create a white backdrop image
         backdrop = Image.new("RGBA", img.size, (255, 255, 255, 255))
@@ -80,17 +80,19 @@ def create_gif(folder_path, output_path="output.gif", duration=None):
 
 
 def main(path, dups_sorted, tmp_file_names):
-    path_main_dir = os.path.basename(os.path.normpath(path))
     line_raw_path = osp.join(path, "line_raw")
     line_file = os.path.join(path, "line_raw.gif")
-
-    res_raw_path = osp.join(path, "final")
-    res_file = os.path.join(path, f"{path_main_dir}.gif")
-
-    create_pngs(path, dups_sorted, tmp_file_names, "final")
-
+    create_pngs(path, dups_sorted, tmp_file_names, "line_raw", "final")
     create_gif(folder_path=line_raw_path, output_path=line_file, duration=200)
 
+    """ seg_color_path = osp.join(path, "seg_color")
+    line_file = os.path.join(path, "seg_color.gif")
+    create_pngs(path, dups_sorted, tmp_file_names, "seg_color", "seg_color_final")
+    create_gif(folder_path=seg_color_path, output_path=line_file, duration=200) """
+
+    path_main_dir = os.path.basename(os.path.normpath(path))
+    res_raw_path = osp.join(path, "final")
+    res_file = os.path.join(path, f"{path_main_dir}.gif")
     create_gif(folder_path=res_raw_path, output_path=res_file, duration=200)
 
 

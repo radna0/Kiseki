@@ -10,4 +10,4 @@ FOLDER_PATH="${1:-$DEFAULT_FOLDER}"
 python3.10 clear.py --folder-path "$FOLDER_PATH"
 
 TCMALLOC_LARGE_ALLOC_REPORT_THRESHOLD=99999999999 \
-python3.10 main.py --path "$FOLDER_PATH" --radius 10
+python3.10 main.py --path "$FOLDER_PATH" --radius 10 
