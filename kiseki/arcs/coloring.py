@@ -34,12 +34,10 @@ def main(args):
         clip_resolution=(640, 640),
     )
     model.load_state_dict(load_params(ckpt_path))
-    model.eval()
 
     opt = {"root": args.path, "multi_clip": args.multi_clip, "mode": args.mode}
-    with Profiler("Color Dataset Time", limit=10):
-        dataset = KisekiInMemoryInferenceDataset(opt)
-
+    dataset = KisekiInMemoryInferenceDataset(opt)
+        
     model_inference = ModelInference(model, dataset.samples)
     if args.mode == "reference":
         model_inference.inference_multi_gt_sequential(args.path)

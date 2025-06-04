@@ -561,8 +561,6 @@ def transport(scores, alpha):
 
 @ARCH_REGISTRY.register()
 class Kiseki(nn.Module):
-    """ """
-
     def __init__(
         self,
         ch_in=6,
@@ -575,25 +573,16 @@ class Kiseki(nn.Module):
     ):
         super().__init__()
 
-        config = argparse.Namespace()
-        config.ch_in = ch_in
-        config.descriptor_dim = descriptor_dim
-        config.keypoint_encoder = keypoint_encoder
-        config.GNN_layers_num = GNN_layer_num
-        config.GNN_layers = ["self", "cross"] * GNN_layer_num
-        config.use_clip = use_clip
-        config.encoder_resolution = encoder_resolution
-        config.clip_resolution = clip_resolution
-
-        self.config = config
-
+        self.ch_in = ch_in
+        self.descriptor_dim = descriptor_dim
+        self.use_clip = use_clip
         self.kenc = KeypointEncoder(
-            self.config.descriptor_dim, self.config.keypoint_encoder
+            descriptor_dim, keypoint_encoder
         )
-        self.gnn = AttentionalGNN(self.config.descriptor_dim, self.config.GNN_layers)
+        self.gnn = AttentionalGNN(descriptor_dim, ["self", "cross"] * GNN_layer_num)
         self.final_proj = nn.Conv1d(
-            self.config.descriptor_dim,
-            self.config.descriptor_dim,
+            descriptor_dim,
+            descriptor_dim,
             kernel_size=1,
             bias=True,
         )
@@ -609,8 +598,6 @@ class Kiseki(nn.Module):
         state_dict = torch.load(
             args["ckpt"], map_location=torch.device("cpu"), weights_only=True
         )
-        # move all to xla
-
         real_state_dict = {k.split("module.")[-1]: v for k, v in state_dict.items()}
         self.raft.load_state_dict(real_state_dict)
         for param in self.raft.parameters():
@@ -619,11 +606,11 @@ class Kiseki(nn.Module):
         bin_score = torch.nn.Parameter(torch.tensor(1.0))
         self.register_parameter("bin_score", bin_score)
         self.segment_desc = SegmentDescriptor(
-            self.config.descriptor_dim,
-            self.config.ch_in,
-            self.config.use_clip,
-            self.config.encoder_resolution,
-            self.config.clip_resolution,
+            descriptor_dim,
+            ch_in,
+            use_clip,
+            encoder_resolution,
+            clip_resolution,
         )
 
     def forward(self, data):
@@ -683,7 +670,7 @@ class Kiseki(nn.Module):
                 warpped_img, (h, w), mode="bilinear", align_corners=False
             )
 
-            if self.config.ch_in == 6:
+            if self.ch_in == 6:
                 warpped_target_img = torch.cat((warpped_img, data["line"]), dim=1)
                 warpped_ref_img = torch.cat(
                     (data["recolorized_img"], data["line_ref"]), dim=1
@@ -692,7 +679,7 @@ class Kiseki(nn.Module):
                 assert (
                     False
                 ), "Input channel only supports 6 with 3 as line and 3 as color."
-            if self.config.use_clip:
+            if self.use_clip:
                 desc = self.segment_desc(
                     warpped_target_img, data["segment"], data["line"], use_offset=True
                 )
@@ -734,7 +721,7 @@ class Kiseki(nn.Module):
             scores = torch.einsum("bdn,bdm->bnm", mdesc, mdesc_ref)
 
             # b k1 k2
-            scores = scores / (self.config.descriptor_dim) ** 0.5
+            scores = scores / (self.descriptor_dim) ** 0.5
 
             # Run the optimal transport.
             b, m, n = scores.size()

@@ -218,6 +218,8 @@ class ModelInference:
         self._set_seed(seed)
         self.samples = samples
         self.model = model
+        self.model.eval()
+
 
     def _set_seed(self, seed):
         self.py_rng_state0 = random.getstate()
