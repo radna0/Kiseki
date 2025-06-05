@@ -19,7 +19,7 @@ def parse_args():
     )
     parser.add_argument(
         "--mode",
-        choices=["nearest", "reference"],
+        choices=["forward", "reference"],
         default="reference",
         help="",
     )

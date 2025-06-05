@@ -41,7 +41,7 @@ THREADS_PER_WORKER = CPU_COUNT // MAX_WORKERS
 
 
 @MODEL_REGISTRY.register()
-class Kiseki(SRModel):
+class KisekiModel(SRModel):
 
     def init_training_settings(self):
         self.net_g.train()
@@ -155,7 +155,7 @@ class Kiseki(SRModel):
         save_path = osp.join(
             self.opt["path"]["visualization"], str(current_iter), dataset_name
         )
-        model_inference.inference_frame_by_frame(save_path, save_img)
+        model_inference.inference_frame_by_frame(save_path)
         results = eval_json_folder(save_path, gt_folder_path, "")
         if save_csv:
             csv_save_path = os.path.join(save_path, "metrics.csv")
@@ -216,10 +216,13 @@ class Kiseki(SRModel):
 class ModelInference:
     def __init__(self, model, samples, seed=42):
         self._set_seed(seed)
-        self.samples = samples
+        # check if samples is an instance of dataloader
+        if isinstance(samples, torch.utils.data.DataLoader):
+            self.test_loader = samples
+        else:
+            self.samples = samples
         self.model = model
         self.model.eval()
-
 
     def _set_seed(self, seed):
         self.py_rng_state0 = random.getstate()
@@ -235,19 +238,81 @@ class ModelInference:
         if hasattr(self, "torch_rng_state0"):
             torch.set_rng_state(self.torch_rng_state0)
 
-    def dis_data_to_cuda(self, data):
+    def _move_to(self, data, device="xla"):
         for key in data.keys():
             if isinstance(data[key], torch.Tensor):
-                import torch_xla as xla
+                if device == "cuda":
+                    data[key] = data[key].to(device)
+                else:
+                    import torch_xla as xla
 
-                data[key] = data[key].to(xla.device())
+                    data[key] = data[key].to(xla.device())
         return data
+
+    def inference_frame_by_frame(self, save_path, save_img=False):
+        # Process the line arts frame by frame and save them at save_path
+        with torch.no_grad():
+            self.model.eval()
+            for test_data in tqdm(self.test_loader):
+                line_root, name_str = osp.split(test_data["file_name"][0])
+                character_root = osp.split(line_root)[0]
+                prev_index = int(name_str) - 1
+                prev_name_str = str(prev_index).zfill(len(name_str))
+                ref_json_path = osp.join(character_root, "seg", prev_name_str + ".json")
+                save_folder = osp.join(save_path, osp.split(character_root)[-1])
+
+                if prev_index == 0:
+                    os.makedirs(save_folder, exist_ok=True)
+                    shutil.copy(ref_json_path, save_folder)
+                    if save_img:
+                        gt0_path = osp.join(
+                            character_root, "gt", prev_name_str + ".png"
+                        )
+                        shutil.copy(gt0_path, save_folder)
+
+                color_dict = load_json(ref_json_path)
+                json_save_path = osp.join(save_folder, name_str + ".json")
+
+                match_tensor = self.model(test_data)
+                match_scores = match_tensor["match_scores"].cpu().numpy()
+
+                color_next_frame = {}
+                unmatch_color = [0] * len(list(color_dict.values())[0])
+                for i, scores in enumerate(match_scores):
+                    color_lookup = np.array(
+                        [
+                            (
+                                color_dict[str(i + 1)]
+                                if str(i + 1) in color_dict
+                                else unmatch_color
+                            )
+                            for i in range(len(scores))
+                        ]
+                    )
+                    unique_colors = np.unique(color_lookup, axis=0)
+                    accumulated_probs = [
+                        np.sum(scores[np.all(color_lookup == color, axis=1)])
+                        for color in unique_colors
+                    ]
+                    color_next_frame[str(i + 1)] = unique_colors[
+                        np.argmax(accumulated_probs)
+                    ].tolist()
+                dump_json(color_next_frame, json_save_path)
+
+                if save_img:
+                    label_path = osp.join(character_root, "seg", name_str + ".png")
+                    img_save_path = json_save_path.replace(".json", ".png")
+                    colorize_label_image(label_path, json_save_path, img_save_path)
 
     def preprocess_character_folder(self, samples, save_path):
         characters = set()
 
         for test_data in samples:
-            line_root, line_name = osp.split(test_data["file_name"])
+            # check if test_data["file_name"] is str or list
+            if isinstance(test_data["file_name"], list):
+                line_root, line_name = osp.split(test_data["file_name"][0])
+            else:
+                line_root, line_name = osp.split(test_data["file_name"])
             logger.info(f"preprocessing {test_data['file_name']}")
             save_folder, _ = osp.split(line_root)
             _, character_name = osp.split(save_folder)
@@ -265,8 +330,9 @@ class ModelInference:
                     shutil.copy(json_path, res_folder)
                     logger.info(f"{gt_path} is given.")
 
-    def inference_single_frame(self, test_data, save_path, threads_per_worker=None):
+    def inference_multi_gt(self, test_data, save_path, threads_per_worker=None):
         with torch.no_grad():
+            # logger.info(f"test_data: {test_data}")
             logger.info(f"threads_per_worker: {threads_per_worker}")
             """ if threads_per_worker is not None:
                 # force PyTorch to use 1 thread for intra‐op (convolution, matrix multiply, etc.)
@@ -274,7 +340,10 @@ class ModelInference:
                 # and if you’re using any multithreaded data‐loading, also limit inter_op
                 torch.set_num_interop_threads(1) """
 
-            line_root, line_name = osp.split(test_data["file_name"])
+            if isinstance(test_data["file_name"], list):
+                line_root, line_name = osp.split(test_data["file_name"][0])
+            else:
+                line_root, line_name = osp.split(test_data["file_name"])
             logger.info(f"processing {test_data['file_name']}")
             save_folder, _ = osp.split(line_root)
             _, character_name = osp.split(save_folder)
@@ -317,8 +386,7 @@ class ModelInference:
             colorize_label_image(label_path, json_save_path, img_save_path)
             logger.info(f"{img_save_path} created.\n")
 
-    # processpool will be used to parallelize the inference process
-    def inference_multi_gt_parallel(self, save_path):
+    def parallel_inference(self, save_path):
         self.preprocess_character_folder(self.samples, save_path)
 
         with concurrent.futures.ProcessPoolExecutor(
@@ -332,7 +400,7 @@ class ModelInference:
 
             futures = [
                 executor.submit(
-                    self.inference_single_frame,
+                    self.inference_multi_gt,
                     test_data,
                     save_path,
                     threads_per_worker,
@@ -342,11 +410,10 @@ class ModelInference:
             for future in concurrent.futures.as_completed(futures):
                 future.result()
 
-    # this function will be used to sequentialize the inference process
-    def inference_multi_gt_sequential(self, save_path):
+    def inference(self, save_path):
         self.preprocess_character_folder(self.samples, save_path)
         for test_data in self.samples:
-            self.inference_single_frame(
+            self.inference_multi_gt(
                 test_data,
                 save_path,
             )

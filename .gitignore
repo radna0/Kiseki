@@ -5,6 +5,9 @@ setup.sh
 
 raft/ckpt/*
 test/*
+experiments/*
+tb_logger/*
+wandb/*
 flow_comparison_frames/*
 dataset/train/*
 dataset/test/*

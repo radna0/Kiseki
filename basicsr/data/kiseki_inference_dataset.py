@@ -463,3 +463,7 @@ class KisekiInMemoryInferenceDataset:
             _dfs(point)
 
         return result[::-1]
+
+
+class KisekiParallizedInMemoryInferenceDataset:
+    pass

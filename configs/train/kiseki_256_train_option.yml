@@ -1,21 +1,21 @@
 # general settings
-name: basicpbc_pbch_train
-model_type: PBCModel
+name: kiseki_pbch_train
+model_type: KisekiModel
 scale: 1
-num_gpu: 2  # set num_gpu: 0 for cpu mode
+num_gpu: 0  # set num_gpu: 0 for cpu mode
 manual_seed: 42
 
 # dataset and data loader settings
 datasets:
   train:
-    name: PaintBucket_Char
-    type: PaintBucketLabelSegDataset
+    name: PaintBucket_Char_v2
+    type: KisekiLabelSegDataset
     aug_params:
       rotate: 20
       resize: 960
       crop: 640
       rotate_prob: 0.5
-    root: dataset/train/PaintBucket_Char/
+    root: dataset/train/PaintBucket_Char_v2/train/PaintBucket_Char_v2
     merge_label_prob: 0.2
     shuffle_label: false
     color_redistribution_type: seg
@@ -26,11 +26,12 @@ datasets:
     num_worker_per_gpu: 4
     batch_size_per_gpu: 1
     dataset_enlarge_ratio: 1
-    prefetch_mode: ~
+    prefetch_mode: cpu
+    num_prefetch_queue: 4
   val:
-    name: PaintBucket_Char
+    name: PaintBucket_Char_v2
     type: PaintBucketSegMat
-    root: dataset/test/PaintBucket_Char/
+    root: dataset/train/PaintBucket_Char_v2/test/PaintBucket_Char_v2
     dstype: contour
     split: test
     is_png_seg: true
@@ -38,16 +39,16 @@ datasets:
 
 # network structures
 network_g:
-  type: BasicPBC
+  type: Kiseki
   ch_in: 6
-  descriptor_dim: 128
-  keypoint_encoder: [32, 64, 128]
-  GNN_layer_num: 9
+  descriptor_dim: 256
+  keypoint_encoder: [32, 64, 128, 256]
+  GNN_layer_num: 12
   use_clip: true
 
 # path
 path:
-  pretrain_network_g: ~
+  pretrain_network_g: ckpt/kiseki_256.pth
   strict_load_g: true
   resume_state: ~
 
@@ -65,8 +66,8 @@ train:
     gamma: 0.1
   
   ema_decay: 0.9
-  total_iter: 800000
-  warmup_iter: -1  # no warm up
+  total_iter: 10
+  warmup_iter: 5  # no warm up
 
   # losses
   l_ce:
@@ -99,7 +100,7 @@ logger:
   save_checkpoint_freq: !!float 5e4
   use_tb_logger: true
   wandb:
-    project: ~
+    project: kiseki
     resume_id: ~
 
 # dist training settings

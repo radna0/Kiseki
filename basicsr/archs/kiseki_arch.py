@@ -525,7 +525,7 @@ class AttentionalGNN(nn.Module):
     def __init__(self, feature_dim: int, layer_names: list):
         super().__init__()
         self.layers = nn.ModuleList(
-            [AttentionalPropagation(feature_dim, 4) for _ in range(len(layer_names))]
+            [AttentionalPropagation(feature_dim, 8) for _ in range(len(layer_names))]
         )
         self.names = layer_names
 
@@ -569,6 +569,7 @@ class Kiseki(nn.Module):
         GNN_layer_num=9,
         use_clip=False,
         encoder_resolution=None,
+        raft_resolution=(1024, 1024),
         clip_resolution=(320, 320),
     ):
         super().__init__()
@@ -576,9 +577,8 @@ class Kiseki(nn.Module):
         self.ch_in = ch_in
         self.descriptor_dim = descriptor_dim
         self.use_clip = use_clip
-        self.kenc = KeypointEncoder(
-            descriptor_dim, keypoint_encoder
-        )
+        self.raft_resolution = raft_resolution
+        self.kenc = KeypointEncoder(descriptor_dim, keypoint_encoder)
         self.gnn = AttentionalGNN(descriptor_dim, ["self", "cross"] * GNN_layer_num)
         self.final_proj = nn.Conv1d(
             descriptor_dim,
@@ -595,6 +595,7 @@ class Kiseki(nn.Module):
         }
 
         self.raft = RAFT(args)
+        logger.info(f"RAFT: {self.raft}")
         state_dict = torch.load(
             args["ckpt"], map_location=torch.device("cpu"), weights_only=True
         )
@@ -603,8 +604,8 @@ class Kiseki(nn.Module):
         for param in self.raft.parameters():
             param.requires_grad = False
 
-        bin_score = torch.nn.Parameter(torch.tensor(1.0))
-        self.register_parameter("bin_score", bin_score)
+        self.bin_score = torch.nn.Parameter(torch.tensor(1.0))
+        self.register_parameter("bin_score", self.bin_score)
         self.segment_desc = SegmentDescriptor(
             descriptor_dim,
             ch_in,
@@ -639,22 +640,27 @@ class Kiseki(nn.Module):
                 data["recolorized_img"],
             )
             h, w = line.shape[-2:]
-            if data["raft_resolution"]:
+            raft_resolution = (
+                data["raft_resolution"]
+                if "raft_resolution" in data
+                else self.raft_resolution
+            )
+            if raft_resolution:
                 line = F.interpolate(
                     line,
-                    data["raft_resolution"],
+                    raft_resolution,
                     mode="bilinear",
                     align_corners=False,
                 )
                 line_ref = F.interpolate(
                     line_ref,
-                    data["raft_resolution"],
+                    raft_resolution,
                     mode="bilinear",
                     align_corners=False,
                 )
                 color_ref = F.interpolate(
                     color_ref,
-                    data["raft_resolution"],
+                    raft_resolution,
                     mode="bilinear",
                     align_corners=False,
                 )

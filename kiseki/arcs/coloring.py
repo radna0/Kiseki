@@ -3,11 +3,7 @@ import torch
 import torch.utils.data as data
 from basicsr.archs.kiseki_arch import Kiseki
 from basicsr.data.kiseki_inference_dataset import KisekiInMemoryInferenceDataset
-from basicsr.data.kiseki_parallel_inference_dataset import (
-    KisekiParallizedInMemoryInferenceDataset,
-)
 from basicsr.models.kiseki_model import ModelInference
-from basicsr.data.pbc_inference_dataset import PaintBucketInferenceDataset
 from kiseki.logging import Profiler
 
 
@@ -37,9 +33,6 @@ def main(args):
 
     opt = {"root": args.path, "multi_clip": args.multi_clip, "mode": args.mode}
     dataset = KisekiInMemoryInferenceDataset(opt)
-        
+
     model_inference = ModelInference(model, dataset.samples)
-    if args.mode == "reference":
-        model_inference.inference_multi_gt_sequential(args.path)
-    else:
-        model_inference.inference_multi_gt(args.path)
+    model_inference.inference(args.path)
