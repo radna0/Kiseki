@@ -2,7 +2,7 @@ import time
 import cv2
 import numpy as np
 from numba import njit, prange
-from linefiller.log.logger import logger
+from kiseki.logging import logger
 import sys
 
 

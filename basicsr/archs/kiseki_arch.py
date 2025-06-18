@@ -595,7 +595,6 @@ class Kiseki(nn.Module):
         }
 
         self.raft = RAFT(args)
-        logger.info(f"RAFT: {self.raft}")
         state_dict = torch.load(
             args["ckpt"], map_location=torch.device("cpu"), weights_only=True
         )

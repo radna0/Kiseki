@@ -1,9 +1,10 @@
 import numpy as np
 from numba import njit
 import cv2
-from linefiller.log.logger import logger
+from kiseki.logging import logger
 
-def thinning(fillmap:np.ndarray, max_iter:int=100):
+
+def thinning(fillmap: np.ndarray, max_iter: int = 100):
     """Fill area of line with surrounding fill color.
 
     # Arguments
@@ -28,9 +29,16 @@ def thinning(fillmap:np.ndarray, max_iter:int=100):
         # Get points between lines and fills.
         line_mask = np.full((h, w), 255, np.uint8)
         line_mask[line_points] = 0
-        line_border_mask = cv2.morphologyEx(line_mask, cv2.MORPH_DILATE,
-                                            cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3)), anchor=(-1, -1),
-                                            iterations=1) - line_mask
+        line_border_mask = (
+            cv2.morphologyEx(
+                line_mask,
+                cv2.MORPH_DILATE,
+                cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3)),
+                anchor=(-1, -1),
+                iterations=1,
+            )
+            - line_mask
+        )
         line_border_points = np.where(line_border_mask == 255)
 
         result_tmp = result.copy()

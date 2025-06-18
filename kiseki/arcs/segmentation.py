@@ -11,13 +11,16 @@ from skimage.measure import label
 from skimage.morphology import binary_dilation, square, footprint_rectangle
 
 from linefiller.linefiller.thinning import thinning
-from linefiller.linefiller.trappedball_fill_opti import (
-    build_fill_map,
+from linefiller_v2.main_pro_v10_v3 import processing
+
+# from linefiller.linefiller.trappedball_fill_opti import (
+from linefiller.linefiller.trappedball_fill import (
+    trapped_ball_fill_multi,
     flood_fill_multi,
     mark_fill,
+    build_fill_map,
     merge_fill,
     show_fill_map,
-    trapped_ball_fill_multi,
 )
 
 from numba import njit
@@ -192,32 +195,7 @@ def extract_label_map(
     return labeled_img
 
 
-def read_line_2_np(img_path, channel=4):
-    img = Image.open(img_path)
-    img_np = np.array(img)
-
-    if img.mode == "RGBA":
-        alpha_channel = img_np[:, :, 3]
-        mask = alpha_channel > 100  # Line detection based on alpha value, default is 10
-    elif img.mode == "RGB":
-        grayscale = np.mean(img_np[:, :, :3], axis=2)
-        mask = (
-            grayscale < 150
-        )  # Line detection based on grayscale value, default is 245
-
-    line = np.zeros((*img_np.shape[:2], 4), dtype=np.uint8)
-    line[:, :, :3] = 255  # Set all RGB to white
-    line[:, :, 3] = np.where(mask, 255, 0)  # Set alpha: 255 for lines, 0 for background
-
-    # Copy original RGB values to new image where there are lines
-    line[mask, :3] = img_np[mask, :3]
-
-    return line[..., :channel]
-
-
 def trappedball_fill(img_path, save_path, radius=4, contour=False):
-    # trappedball_fill_numba(img_path, save_path, radius, contour)
-    # return
 
     im = read_line_2_np(img_path, channel=3)
     im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
@@ -241,7 +219,11 @@ def trappedball_fill(img_path, save_path, radius=4, contour=False):
     fillmap = build_fill_map(result, fills)
     fillmap = merge_fill(fillmap)
 
-    cv2.imwrite(save_path, show_fill_map(thinning(fillmap) if not contour else fillmap))
+    # fillmap = processing(img_path)
+    with Profiler("Thinning Time", limit=10):
+        cv2.imwrite(
+            save_path, show_fill_map(thinning(fillmap) if not contour else fillmap)
+        )
 
 
 def extract_seg_from_color(color_img_path, line_path, seg_save_path):
@@ -266,9 +248,8 @@ def process_line(
     seg_path = osp.join(seg_folder, name + ".png")
     seg_color_path = osp.join(seg_color_folder, name + ".png")
 
-    # profile trappedball_fill
     with Profiler("TrappedBall Filling Time", limit=20):
-        trappedball_fill(line_path, seg_color_path, radius, contour=True)
+        trappedball_fill(line_path, seg_color_path, radius, contour=False)
 
     # raise Exception("TrappedBall Filling Time")
 

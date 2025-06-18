@@ -26,12 +26,17 @@ logger = logging.getLogger("rich")
 console = Console()
 
 
+class ProfilerStopException(Exception):
+    """Exception raised when profiler reaches a stop point"""
+    pass
+
 class Profiler:
-    def __init__(self, name, sort_stats="cumtime", limit=50):
+    def __init__(self, name, sort_stats="cumtime", limit=50, stop=False):
         self.name = name
         self.profiler = cProfile.Profile()
         self.limit = limit
         self.sort_stats = sort_stats
+        self.stop = stop
 
     def __enter__(self):
         self.start_time = time.time()
@@ -53,6 +58,8 @@ class Profiler:
         self.render_stats_table(profile_text)
 
         logger.info(f"{self.name} took {duration:.4f} seconds\n")
+        if self.stop:
+            raise ProfilerStopException(f"Profiler stopped at checkpoint: {self.name}")
 
     def render_stats_table(self, profile_text):
         table = Table(title=f"Profile: {self.name}", show_lines=True)
